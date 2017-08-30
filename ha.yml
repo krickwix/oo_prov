@@ -1,0 +1,176 @@
+heat_template_version: 2014-10-16
+
+parameters:
+  jump_flavor:
+    type: string
+  jump_image:
+    type: string
+  nameserver_flavor:
+    type: string
+  nameserver_image:
+    type: string
+  etcd_flavor:
+    type: string
+  etcd_image:
+    type: string
+  master_flavor:
+    type: string
+  master_image:
+    type: string
+  node_flavor:
+    type: string
+  node_image:
+    type: string
+  keyname:
+    type: string
+  public_net:
+    type: string
+  name_servers:
+    type: comma_delimited_list
+  private_net_cidr:
+    type: string
+  private_net_pool_start:
+    type: string
+  private_net_pool_end:
+    type: string
+  private_net_gateway:
+    type: string
+  lb_master_port:
+    type: number
+
+resources:
+  private_net:
+    type: OS::Neutron::Net
+    properties:
+      name:
+        str_replace:
+          template: '%stackname%-net'
+          params:
+            '%stackname%': { get_param: 'OS::stack_name' }
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_net_cidr }
+      gateway_ip: { get_param: private_net_gateway }
+      allocation_pools:
+        - start: { get_param: private_net_pool_start }
+          end: { get_param: private_net_pool_end }
+      dns_nameservers: { get_param: name_servers }
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net }
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: private_subnet }
+
+  etcd_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 3
+      resource_def:
+        type: etcd.yaml
+        properties:
+          flavor: { get_param: etcd_flavor }
+          image: { get_param: etcd_image }
+          keyname: { get_param: keyname }
+          private_net: { get_resource: private_net }
+          private_subnet: { get_resource: private_subnet }
+
+  lb_master_monitor:
+    type: OS::Neutron::LBaaS::HealthMonitor
+    properties:
+      delay: 3
+      type: TCP
+      timeout: 3
+      max_retries: 3
+      pool: { get_resource: pool_master }
+
+  pool_master:
+    type: OS::Neutron::LBaaS::Pool
+    properties:
+      lb_algorithm: SOURCE_IP
+      protocol: TCP
+      listener: { get_resource: listener_master }
+
+  listener_master:
+    type: OS::Neutron::LBaaS::Listener
+    properties:
+      loadbalancer: { get_resource: loadbalancer_master }
+      protocol: TCP
+      protocol_port: { get_param: lb_master_port }
+
+  loadbalancer_master:
+    type: OS::Neutron::LBaaS::LoadBalancer
+    properties:
+      vip_subnet: { get_resource: private_subnet }
+      provider: haproxy
+
+  lb_master_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+      port_id: { get_attr: [loadbalancer_master, vip_port_id ]}
+
+  master_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 3
+      resource_def:
+        type: master.yaml
+        properties:
+          flavor: { get_param: master_flavor }
+          image: { get_param: master_image }
+          keyname: { get_param: keyname }
+          private_net: { get_resource: private_net }
+          private_subnet: { get_resource: private_subnet }
+          lb_pool: { get_resource: pool_master }
+          app_port: { get_param: lb_master_port }
+
+  node_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 2
+      resource_def:
+        type: node.yaml
+        properties:
+          flavor: { get_param: node_flavor }
+          image: { get_param: node_image }
+          keyname: { get_param: keyname }
+          private_net: { get_resource: private_net }
+          private_subnet: { get_resource: private_subnet }
+
+  jump_server:
+    type: OS::Nova::Server
+    properties:
+      flavor: { get_param: jump_flavor }
+      image: { get_param: jump_image }
+      key_name: { get_param: keyname }
+      networks: 
+        - port: { get_resource: jump_server_port }
+
+  jump_server_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_net }
+      fixed_ips:
+        - subnet_id: { get_resource: private_subnet }
+
+  jump_server_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+      port_id: { get_resource: jump_server_port }
+
+  name_server:
+    type: OS::Nova::Server
+    properties:
+      flavor: { get_param: nameserver_flavor }
+      image: { get_param: nameserver_image }
+      key_name: { get_param: keyname }
+      networks: [ { network: { get_resource: private_net } } ]
+

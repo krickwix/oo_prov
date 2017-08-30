@@ -1,0 +1,29 @@
+heat_template_version: 2014-10-16
+
+parameters:
+  flavor:
+    type: string
+  image:
+    type: string
+  keyname:
+    type: string
+  private_net:
+    type: string
+  private_subnet:
+    type: string
+
+resources:
+  etcd_server_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      fixed_ips:
+        - subnet_id: { get_param: private_subnet }
+
+  etcd_server:
+    type: OS::Nova::Server
+    properties:
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      networks: [ { network: { get_param: private_net } } ]
+      key_name: { get_param: keyname }

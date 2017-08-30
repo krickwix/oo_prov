@@ -1,0 +1,32 @@
+[OSEv3:vars]
+ansible_ssh_user=cloud-user
+ansible_become=yes
+openshift_deployment_type=origin
+openshift_master_identity_providers=[{'name': 'htpasswd_auth', 'login': 'true', 'challenge': 'true', 'kind': 'HTPasswdPasswordIdentityProvider', 'filename': '/etc/origin/master/htpasswd'}]
+openshift_master_cluster_method=native
+openshift_master_cluster_hostname=pirl-openshift.cisco.com
+openshift_master_cluster_public_hostname=pirl-openshift.cisco.com
+openshift_public_hostname=pirl-openshift.cisco.com
+openshift_public_ip=10.60.18.86
+openshift_node_kubelet_args={'pods-per-core': ['10'], 'max-pods': ['250'], 'image-gc-high-threshold': ['90'], 'image-gc-low-threshold': ['80']}
+openshift_clock_enabled=true
+openshift_examples_load_rhel=true
+
+[OSEv3:children]
+masters
+nodes
+etcd
+
+[masters]
+shift-master-1 ansible_host=192.168.0.6
+shift-master-2 ansible_host=192.168.0.8
+shift-master-3 ansible_host=192.168.0.12
+
+[etcd]
+shift-etcd-1 ansible_host=192.168.0.4
+shift-etcd-2 ansible_host=192.168.0.13
+shift-etcd-3 ansible_host=192.168.0.15
+
+[nodes]
+shift-node-1 ansible_host=192.168.0.14
+shift-node-2 ansible_host=192.168.0.17

@@ -1,0 +1,41 @@
+heat_template_version: 2014-10-16
+
+parameters:
+  flavor:
+    type: string
+  image:
+    type: string
+  keyname:
+    type: string
+  private_net:
+    type: string
+  private_subnet:
+    type: string
+  lb_pool:
+    type: string
+  app_port:
+    type: number
+
+resources:
+  master_server_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      fixed_ips:
+        - subnet_id: { get_param: private_subnet }
+
+  master_server:
+    type: OS::Nova::Server
+    properties:
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      networks: [ { network: { get_param: private_net } } ]
+      key_name: { get_param: keyname }
+
+  pool_member:
+    type: OS::Neutron::LBaaS::PoolMember
+    properties:
+      pool: { get_param: lb_pool }
+      address: { get_attr: [ master_server, first_address ]}
+      protocol_port: { get_param: app_port }
+      subnet: { get_param: private_subnet }
